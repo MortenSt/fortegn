@@ -11,7 +11,6 @@ st.title("📝 Generator for Fortegnsskjema-oppgaver")
 # --- SIDEBAR: KONTROLLPANEL ---
 with st.sidebar:
     st.header("1. Definer funksjon")
-    # Setter en litt mer avansert standardfunksjon som demonstrerer brudd og nullpunkter godt
     input_f = st.text_input("Funksjon f(x):", "(2*x - 4)*(x + 3) / (x - 1)")
     
     st.header("2. Lærer-modus (Skjul elementer)")
@@ -22,61 +21,46 @@ with st.sidebar:
     
     st.header("3. Design")
     farge_tema = st.selectbox("Linjefarge", ["Svart", "Blå/Rød"], index=0)
-    st.info("Tips: 'Svart' er best for utskrift. 'Blå/Rød' er best for skjermvisning.")
 
-# --- MATEMATISK LOGIKK ---
+# --- HOVEDLOGIKK ---
 try:
     x = sp.symbols('x')
     f = sp.sympify(input_f)
     
-    # Faktorisering
+    # Faktorisering og klargjøring
     f_faktorisert = sp.factor(f)
     teller, nevner = sp.fraction(f_faktorisert)
     
-    # Hent ut individuelle faktorer for tegning
     t_faktorer_list = sp.factor_list(teller)[1]
     n_faktorer_list = sp.factor_list(nevner)[1]
     konstant = sp.factor_list(teller)[0] / sp.factor_list(nevner)[0]
 
     alle_faktorer = []
-    if abs(konstant - 1) > 1e-9: # Legg til konstant hvis den ikke er 1
+    if abs(konstant - 1) > 1e-9:
         alle_faktorer.append(konstant)
     for fakt, eksp in t_faktorer_list: alle_faktorer.append(fakt**eksp)
     for fakt, eksp in n_faktorer_list: alle_faktorer.append(fakt**eksp)
 
-    # Kritiske punkter
     nullpunkter = sp.solve(teller, x)
     bruddpunkter = sp.solve(nevner, x)
-    # Filtrer kun reelle løsninger og konverter til sortert liste av unike tall
     kritiske_x_sym = sorted(list(set([p for p in (nullpunkter + bruddpunkter) if p.is_real])), key=lambda v: float(v))
 
-    # --- VISNING ---
-    if not skjul_funksjon:
-        st.subheader("Analyse av funksjon")
-        st.latex(f"f(x) = {sp.latex(f_faktorisert)}")
-    else:
-        st.subheader("Oppgave: Analyser funksjonen basert på skjemaet")
-        st.write("*(Funksjonsuttrykket er skjult)*")
-
-    # --- PLOTTING AV FORTEGNSSKJEMA ---
-def tegn_skjema():
+    # --- FUNKSJON FOR Å TEGNE SKJEMA ---
+    def tegn_skjema():
         margin = 2.0
         x_min = float(kritiske_x_sym[0]) - margin if kritiske_x_sym else -5
         x_max = float(kritiske_x_sym[-1]) + margin if kritiske_x_sym else 5
-        
         plot_pts = sorted(list(set([x_min, x_max] + [float(val) for val in kritiske_x_sym])))
         
         rader = alle_faktorer + [f]
         fig, ax = plt.subplots(figsize=(12, len(rader) * 1.0))
         
-        # Flytt x-aksen til toppen
+        # Plasser x-aksen på toppen
         ax.xaxis.set_ticks_position('top')
         ax.xaxis.set_label_position('top')
 
         for idx, uttrykk in enumerate(reversed(rader)):
             y = idx
-            
-            # Navn på venstre side
             if skjul_faktorer:
                 label = "f(x)" if idx == 0 else f"Faktor {len(rader)-idx}"
             else:
@@ -84,115 +68,70 @@ def tegn_skjema():
             
             ax.text(x_min - 0.2, y, label, va='center', ha='right', fontsize=14)
             
-            # Tegn linjer
             for i in range(len(plot_pts)-1):
                 x1, x2 = plot_pts[i], plot_pts[i+1]
                 mid = (x1 + x2) / 2
                 try:
                     verdi = uttrykk.subs(x, mid)
                     pos = verdi > 0
-                except:
-                    pos = float(uttrykk) > 0
+                except: pos = float(uttrykk) > 0
 
-                ls = '-' if pos else '--'
-                farge = 'black'
+                ls, farge = ('-', 'black') if pos else ('--', 'black')
                 if farge_tema == "Blå/Rød":
                     farge = 'blue' if pos else 'red'
                 
                 ax.plot([x1, x2], [y, y], linestyle=ls, color=farge, lw=2.5)
 
-            # Markører (0 og X)
             for p_sym in kritiske_x_sym:
                 p_val = float(p_sym)
-                # Vertikale hjelpelinjer som starter fra toppen
                 ax.axvline(p_val, color='gray', lw=0.8, linestyle=':', alpha=0.7)
                 
                 if idx == 0:
                     is_brudd = any([sp.simplify(p_sym - b) == 0 for b in bruddpunkter])
-                    symbol = 'X' if is_brudd else '0'
-                    ax.text(p_val, y, symbol, ha='center', va='center', fontsize=14, bbox=dict(facecolor='white', edgecolor='none', pad=3))
+                    ax.text(p_val, y, 'X' if is_brudd else '0', ha='center', va='center', 
+                            fontsize=14, bbox=dict(facecolor='white', edgecolor='none', pad=3))
                 else:
                     try:
                         if abs(float(uttrykk.subs(x, p_sym))) < 1e-9:
-                             ax.text(p_val, y, '0', ha='center', va='center', fontsize=14, bbox=dict(facecolor='white', edgecolor='none', pad=3))
+                             ax.text(p_val, y, '0', ha='center', va='center', fontsize=14, 
+                                     bbox=dict(facecolor='white', edgecolor='none', pad=3))
                     except: pass
 
         ax.set_xlim(x_min - 0.5, x_max + 0.5)
-        # Juster y-lim slik at x-aksen øverst ikke kutter teksten
         ax.set_ylim(-0.5, len(rader) - 0.2)
         
-        if skjul_x_verdier:
-            ax.set_xticks([])
-        else:
+        if not skjul_x_verdier:
             ax.set_xticks([float(v) for v in kritiske_x_sym])
             ax.set_xticklabels([f"${sp.latex(v)}$" for v in kritiske_x_sym], fontsize=13)
-            # Legg til en liten overskrift for x-aksen hvis ønskelig
-            ax.set_xlabel('$x$', loc='right', fontsize=14)
-            
-        ax.spines['top'].set_visible(True) # Gjør topplinjen (x-aksen) synlig
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_visible(False)
+        else:
+            ax.set_xticks([])
+
+        ax.spines['top'].set_visible(True)
+        ax.spines[['bottom', 'right', 'left']].set_visible(False)
         ax.get_yaxis().set_visible(False)
-        
         plt.tight_layout()
         return fig
 
-
+    # Vis analyse og plott
+    if not skjul_funksjon:
+        st.latex(f"f(x) = {sp.latex(f_faktorisert)}")
     
-    
-    # Generer figuren
     fig = tegn_skjema()
-    
-    # Vis figuren i Streamlit
     st.pyplot(fig)
 
-    # --- LAGRE TIL BILDEFILER ---
-    # Lagre som PNG (høy oppløsning for Word/Print)
+    # --- NEDLASTING ---
     png_buffer = io.BytesIO()
-    # dpi=300 gir høy utskriftskvalitet. bbox_inches='tight' fjerner ekstra hvit støy rundt bildet.
-    fig.savefig(png_buffer, format='png', dpi=300, bbox_inches='tight') 
-    png_data = png_buffer.getvalue()
-
-    # Lagre som SVG (vektorgrafikk, skalerbart)
-    svg_buffer = io.BytesIO()
-    fig.savefig(svg_buffer, format='svg', bbox_inches='tight')
-    svg_data = svg_buffer.getvalue()
-
-    # Legg til nedlastingsknapper i sidebar
+    fig.savefig(png_buffer, format='png', dpi=300, bbox_inches='tight')
+    
     with st.sidebar:
-        st.header("4. Last ned bilde")
-        st.download_button(
-            label="📥 Last ned PNG (til Word/Prøve)",
-            data=png_data,
-            file_name="fortegnsskjema_proeve.png",
-            mime="image/png",
-            help="Høyoppløselig bilde, perfekt for å lime inn i tekstdokumenter."
-        )
-        st.download_button(
-            label="📥 Last ned SVG (Vektorgrafikk)",
-            data=svg_data,
-            file_name="fortegnsskjema_vektor.svg",
-            mime="image/svg+xml",
-            help="Skalerbar grafikk. Kan åpnes i nyere Word eller redigeres i Illustrator/Inkscape."
-        )
+        st.header("4. Last ned")
+        st.download_button("📥 Last ned PNG", data=png_buffer.getvalue(), file_name="fortegn.png", mime="image/png")
 
-    # --- DERIVASJON OG DRØFTING (Valgfritt) ---
     if not skjul_derivert:
         st.divider()
-        st.subheader("Fullstendig funksjonsdrøfting (Lærerfasit)")
         f1 = sp.diff(f, x)
-        f2 = sp.diff(f1, x)
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            st.write("**Førstederivert (Stigning):**")
-            st.latex(f"f'(x) = {sp.latex(sp.simplify(f1))}")
-            st.write("Ekstremalpunkter ($f'=0$):", [p.evalf(3) for p in sp.solve(f1, x) if p.is_real])
-        with c2:
-            st.write("**Andrederivert (Krumning):**")
-            st.latex(f"f''(x) = {sp.latex(sp.simplify(f2))}")
-            st.write("Vendepunkter ($f''=0$):", [p.evalf(3) for p in sp.solve(f2, x) if p.is_real])
+        st.write("**Derivert:**")
+        st.latex(f"f'(x) = {sp.latex(sp.simplify(f1))}")
 
 except Exception as e:
-    st.error(f"Kunne ikke generere skjemaet. Sjekk funksjonsuttrykket. Feilmelding: {e}")
+    st.error(f"Feil i uttrykket: {e}")
