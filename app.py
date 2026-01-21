@@ -13,6 +13,17 @@ with st.sidebar:
     st.header("1. Definer funksjon")
     input_f = st.text_input("Skriv inn f(x):", "x**3 - 3*x**2 + 2")
     
+    # --- NY: HJELP TIL INNTASTING ---
+    with st.expander("ℹ️ Hvordan skrive inn matte?"):
+        st.markdown("""
+        - **Potens:** `x**2` (ikke `x^2`)
+        - **Gange:** `2*x` (husk stjerne)
+        - **Brøk:** `(x+1)/(x-1)`
+        - **Kvadratrot:** `sqrt(x)`
+        - **Eulers tall (e):** `exp(x)`
+        - **Pi:** `pi`
+        """)
+
     st.header("2. Velg Analyse-nivå")
     analyse_nivå = st.radio(
         "Hva skal analyseres?",
@@ -30,11 +41,11 @@ with st.sidebar:
 # --- MATEMATISK LOGIKK ---
 try:
     x = sp.symbols('x')
+    # Bruker locals={'sqrt': sp.sqrt, 'exp': sp.exp, 'pi': sp.pi} for sikkerhets skyld
     f_orig = sp.sympify(input_f)
     f1 = sp.diff(f_orig, x)
     f2 = sp.diff(f1, x)
     
-    # Velg mål-funksjon
     if analyse_nivå == "Originalfunksjon f(x)":
         target_f, label_prefix, f_grad = f_orig, "f(x)", 0
     elif analyse_nivå == "Førstederivert f'(x)":
@@ -42,11 +53,9 @@ try:
     else:
         target_f, label_prefix, f_grad = f2, "f''(x)", 2
 
-    # Faktorisering
     target_f_faktorisert = sp.factor(target_f)
     teller, nevner = sp.fraction(target_f_faktorisert)
     
-    # Finn alle kritiske x-verdier (nullpunkter og bruddpunkter)
     nullpunkter = sp.solve(teller, x)
     bruddpunkter = sp.solve(nevner, x)
     alle_kritiske = sorted(list(set([sp.re(p) for p in (nullpunkter + bruddpunkter) if p.is_real])), key=float)
@@ -58,7 +67,6 @@ try:
         x_max = float(alle_kritiske[-1]) + margin if alle_kritiske else 5
         plot_pts = sorted(list(set([x_min, x_max] + [float(val) for val in alle_kritiske])))
         
-        # Finn faktorer for visning
         t_fakt, n_fakt = sp.factor_list(teller)[1], sp.factor_list(nevner)[1]
         konst = sp.factor_list(teller)[0] / sp.factor_list(nevner)[0]
         faktorer_linjer = []
@@ -67,13 +75,14 @@ try:
         for fakt, eksp in n_fakt: faktorer_linjer.append(fakt**eksp)
         
         rader = faktorer_linjer + [target_f]
-        fig, ax = plt.subplots(figsize=(12, len(rader) * 0.9))
+        # Øker figurhøyden litt for mer luft
+        fig, ax = plt.subplots(figsize=(12, len(rader) * 1.1))
         ax.xaxis.set_ticks_position('top')
         
         for idx, uttrykk in enumerate(reversed(rader)):
             y = idx
             label = label_prefix if idx == 0 else (f"Faktor {len(rader)-idx}" if skjul_faktorer else f"${sp.latex(uttrykk)}$")
-            ax.text(x_min - 0.2, y, label, va='center', ha='right', fontsize=12)
+            ax.text(x_min - 0.2, y, label, va='center', ha='right', fontsize=13)
             
             for i in range(len(plot_pts)-1):
                 mid = (plot_pts[i] + plot_pts[i+1]) / 2
@@ -90,17 +99,24 @@ try:
                     ax.text(float(p), y, sym, ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none'))
                 else:
                     try: 
-                        if abs(uttrykk.subs(x, p)) < 1e-9: ax.text(float(p), y, '0', ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none'))
+                        if abs(uttrykk.subs(x, p)) < 1e-9: 
+                            ax.text(float(p), y, '0', ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none'))
                     except: pass
 
         ax.set_xlim(x_min - 0.5, x_max + 0.5)
+        # --- JUSTERING: Mer luft mellom x-akse (topp) og første linje ---
+        # Vi setter ylim til å gå litt høyere enn den øverste raden (som er len(rader)-1)
+        ax.set_ylim(-0.5, len(rader) + 0.2)
+        
         if not skjul_x:
             ax.set_xticks([float(v) for v in alle_kritiske])
-            ax.set_xticklabels([f"${sp.latex(v)}$" for v in alle_kritiske])
+            ax.set_xticklabels([f"${sp.latex(v)}$" for v in alle_kritiske], fontsize=12)
         else: ax.set_xticks([])
+        
         ax.spines['top'].set_visible(True)
         ax.spines[['bottom', 'left', 'right']].set_visible(False)
         ax.get_yaxis().set_visible(False)
+        plt.tight_layout()
         return fig
 
     # --- VISNING ---
@@ -109,51 +125,39 @@ try:
     
     st.pyplot(tegn_skjema())
 
-    # --- DYNAMISK ANALYSE-MODUL ---
+    # --- ANALYSE-MODUL ---
     if not skjul_info:
         st.divider()
         st.subheader("📝 Automatisk Analyse & Tolkning")
         
-        # 1. Bruddpunkter (Gjelder alle)
         if bruddpunkter:
-            st.warning(f"**Bruddpunkter:** Funksjonen er ikke definert for $x = {sp.latex(bruddpunkter)}$. Her har grafen vertikale asymptoter.")
+            st.warning(f"**Bruddpunkter:** Funksjonen er ikke definert for $x = {sp.latex(bruddpunkter)}$.")
 
-        # 2. Spesifikk analyse basert på nivå
-        if f_grad == 0: # f(x)
-            st.write(f"**Nullpunkter:** Grafen skjærer x-aksen i $x = {sp.latex(nullpunkter)}$.")
-            st.write(f"**Positiv/Negativ:** Se hvor linjen for $f(x)$ er hel (over x-aksen) eller stiplet (under x-aksen).")
-
-        elif f_grad == 1: # f'(x)
-            st.write("**Monotoniegenskaper (Stigning):**")
+        if f_grad == 0:
+            st.write(f"**Nullpunkter:** $x = {sp.latex(nullpunkter)}$")
+        elif f_grad == 1:
+            st.write("**Monotoniegenskaper:**")
             for p in nullpunkter:
                 if p.is_real:
-                    # Sjekk fortegn før og etter for å finne type punkt
-                    v_for = f1.subs(x, p - 0.01)
-                    v_etter = f1.subs(x, p + 0.01)
+                    v_for, v_etter = f1.subs(x, p - 0.01), f1.subs(x, p + 0.01)
                     y_val = f_orig.subs(x, p)
-                    
                     if v_for > 0 and v_etter < 0:
-                        st.success(f"I $x = {sp.latex(p)}$ har vi et **toppunkt**: $({sp.latex(p)}, {sp.latex(y_val)})$")
+                        st.success(f"Toppunkt i $({sp.latex(p)}, {sp.latex(y_val)})$")
                     elif v_for < 0 and v_etter > 0:
-                        st.success(f"I $x = {sp.latex(p)}$ har vi et **bunnpunkt**: $({sp.latex(p)}, {sp.latex(y_val)})$")
-                    elif (v_for > 0 and v_etter > 0) or (v_for < 0 and v_etter < 0):
-                        st.info(f"I $x = {sp.latex(p)}$ har vi et **terassepunkt**: $({sp.latex(p)}, {sp.latex(y_val)})$")
-
-        elif f_grad == 2: # f''(x)
-            st.write("**Krumning og Vendepunkter:**")
+                        st.success(f"Bunnpunkt i $({sp.latex(p)}, {sp.latex(y_val)})$")
+                    elif (v_for * v_etter) > 0:
+                        st.info(f"Terassepunkt i $({sp.latex(p)}, {sp.latex(y_val)})$")
+        elif f_grad == 2:
+            st.write("**Krumning:**")
             for p in nullpunkter:
                 if p.is_real:
-                    v_for = f2.subs(x, p - 0.01)
-                    v_etter = f2.subs(x, p + 0.01)
-                    if (v_for * v_etter) < 0: # Fortegnsskifte
-                        st.success(f"I $x = {sp.latex(p)}$ har vi et **vendepunkt**. Grafen skifter krumning.")
-            st.write("- **Hel linje:** Hulsiden vender opp (konveks / 'smiler').")
-            st.write("- **Stiplet linje:** Hulsiden vender ned (konkav / 'sur').")
+                    if (f2.subs(x, p-0.01)*f2.subs(x, p+0.01)) < 0:
+                        st.success(f"Vendepunkt i $x = {sp.latex(p)}$")
 
     # Nedlasting
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-    st.sidebar.download_button("📥 Last ned skjema (PNG)", buf.getvalue(), "analyse.png")
+    st.sidebar.download_button("📥 Last ned bilde", buf.getvalue(), "fortegnsskjema.png")
 
 except Exception as e:
-    st.error(f"Feil: {e}")
+    st.error(f"Feil: Kontroller inntastingen. Bruk `**` for potens og `*` for gange. ({e})")
