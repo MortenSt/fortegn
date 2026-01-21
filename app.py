@@ -59,18 +59,20 @@ try:
         st.write("*(Funksjonsuttrykket er skjult)*")
 
     # --- PLOTTING AV FORTEGNSSKJEMA ---
-    def tegn_skjema():
+def tegn_skjema():
         margin = 2.0
-        # Håndter tilfeller uten kritiske punkter
         x_min = float(kritiske_x_sym[0]) - margin if kritiske_x_sym else -5
         x_max = float(kritiske_x_sym[-1]) + margin if kritiske_x_sym else 5
         
-        # Lag plottepunkter: start, slutt, og alle kritiske punkter
         plot_pts = sorted(list(set([x_min, x_max] + [float(val) for val in kritiske_x_sym])))
         
         rader = alle_faktorer + [f]
-        fig, ax = plt.subplots(figsize=(12, len(rader) * 1.0)) # Litt større figur for bedre lesbarhet
+        fig, ax = plt.subplots(figsize=(12, len(rader) * 1.0))
         
+        # Flytt x-aksen til toppen
+        ax.xaxis.set_ticks_position('top')
+        ax.xaxis.set_label_position('top')
+
         for idx, uttrykk in enumerate(reversed(rader)):
             y = idx
             
@@ -82,14 +84,14 @@ try:
             
             ax.text(x_min - 0.2, y, label, va='center', ha='right', fontsize=14)
             
-            # Tegn linjer mellom punktene
+            # Tegn linjer
             for i in range(len(plot_pts)-1):
                 x1, x2 = plot_pts[i], plot_pts[i+1]
                 mid = (x1 + x2) / 2
                 try:
                     verdi = uttrykk.subs(x, mid)
                     pos = verdi > 0
-                except: # Hvis substitusjon feiler (f.eks. konstant)
+                except:
                     pos = float(uttrykk) > 0
 
                 ls = '-' if pos else '--'
@@ -99,42 +101,46 @@ try:
                 
                 ax.plot([x1, x2], [y, y], linestyle=ls, color=farge, lw=2.5)
 
-            # Markører (0 og X) på kritiske punkter
+            # Markører (0 og X)
             for p_sym in kritiske_x_sym:
                 p_val = float(p_sym)
-                # Hjelpelinje
+                # Vertikale hjelpelinjer som starter fra toppen
                 ax.axvline(p_val, color='gray', lw=0.8, linestyle=':', alpha=0.7)
                 
-                if idx == 0: # Bunnen (totalfunksjonen)
-                    # Sjekk symbolsk om punktet er et bruddpunkt
+                if idx == 0:
                     is_brudd = any([sp.simplify(p_sym - b) == 0 for b in bruddpunkter])
                     symbol = 'X' if is_brudd else '0'
                     ax.text(p_val, y, symbol, ha='center', va='center', fontsize=14, bbox=dict(facecolor='white', edgecolor='none', pad=3))
                 else:
-                    # For faktorene: sjekk om faktoren blir 0 i dette punktet
                     try:
                         if abs(float(uttrykk.subs(x, p_sym))) < 1e-9:
                              ax.text(p_val, y, '0', ha='center', va='center', fontsize=14, bbox=dict(facecolor='white', edgecolor='none', pad=3))
                     except: pass
 
-        # Styling av akser
         ax.set_xlim(x_min - 0.5, x_max + 0.5)
-        ax.set_ylim(-0.5, len(rader) - 0.5)
+        # Juster y-lim slik at x-aksen øverst ikke kutter teksten
+        ax.set_ylim(-0.5, len(rader) - 0.2)
         
         if skjul_x_verdier:
             ax.set_xticks([])
         else:
-            # Bruk symbolske verdier for pene LaTeX-etiketter på aksen
             ax.set_xticks([float(v) for v in kritiske_x_sym])
-            ax.set_xticklabels([f"${sp.latex(v)}$" for v in kritiske_x_sym], fontsize=12)
+            ax.set_xticklabels([f"${sp.latex(v)}$" for v in kritiske_x_sym], fontsize=13)
+            # Legg til en liten overskrift for x-aksen hvis ønskelig
+            ax.set_xlabel('$x$', loc='right', fontsize=14)
             
-        ax.spines['top'].set_visible(False)
+        ax.spines['top'].set_visible(True) # Gjør topplinjen (x-aksen) synlig
+        ax.spines['bottom'].set_visible(False)
         ax.spines['right'].set_visible(False)
         ax.spines['left'].set_visible(False)
         ax.get_yaxis().set_visible(False)
-        plt.tight_layout() # Juster marger automatisk
+        
+        plt.tight_layout()
         return fig
 
+
+    
+    
     # Generer figuren
     fig = tegn_skjema()
     
