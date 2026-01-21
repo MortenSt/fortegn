@@ -5,26 +5,34 @@ import numpy as np
 import io
 
 # Sideoppsett
-st.set_page_config(page_title="Matte-Analyse: Drøfting", layout="wide")
-st.title("📈 Funksjonsdrøfting med krumning og stigning")
+st.set_page_config(page_title="Matte-Analyse", layout="wide")
+st.title("📈 Avansert Funksjonsanalyse")
 
 # --- SIDEBAR: KONTROLLPANEL ---
 with st.sidebar:
     st.header("1. Definer funksjon")
     input_f = st.text_input("Skriv inn f(x):", "x**3 - 3*x**2 + 2")
     
-    with st.expander("ℹ️ Hvordan skrive inn matte?"):
-        st.markdown("- **Potens:** `x**2`\n- **Gange:** `2*x`\n- **Brøk:** `(x+1)/(x-1)`\n- **Kvadratrot:** `sqrt(x)`")
+    with st.expander("ℹ️ Inntastingsguide"):
+        st.markdown("""
+        * **Potens:** `x**2`
+        * **Gange:** `2*x`
+        * **Brøk:** `(x+1)/(x-1)`
+        * **Kvadratrot:** `sqrt(x)`
+        * **Eulers tall:** `exp(x)`
+        """)
 
-    st.header("2. Velg Analyse-nivå")
-    analyse_nivå = st.radio("Hva skal analyseres?", ["Originalfunksjon f(x)", "Førstederivert f'(x)", "Andrederivert f''(x)"])
+    st.header("2. Analyse-nivå")
+    nivå = st.radio("Hva skal analyseres?", ["f(x)", "f'(x)", "f''(x)"])
     
-    st.header("3. Lærer-modus")
-    skjul_info = st.checkbox("Skjul matematisk uttrykk og fasit", value=False)
-    vis_graf = st.checkbox("Vis selve grafen til f(x)", value=True)
+    st.header("3. Visning (Lærer-modus)")
+    v_info = not st.checkbox("Skjul fasit og uttrykk", value=False)
+    v_faktorer = not st.checkbox("Skjul faktornavn", value=False)
+    v_x_akse = not st.checkbox("Skjul x-verdier", value=False)
+    v_graf = st.checkbox("Vis grafen til f(x)", value=True)
     
     st.header("4. Design")
-    farge_tema = st.selectbox("Farger", ["Svart", "Blå/Rød"])
+    farge_valg = st.selectbox("Fargetema", ["Svart", "Blå/Rød"])
 
 # --- MATEMATISK LOGIKK ---
 try:
@@ -33,136 +41,147 @@ try:
     f1 = sp.diff(f_orig, x)
     f2 = sp.diff(f1, x)
     
-    if analyse_nivå == "Originalfunksjon f(x)":
-        target_f, label_prefix, f_grad = f_orig, "f(x)", 0
-    elif analyse_nivå == "Førstederivert f'(x)":
-        target_f, label_prefix, f_grad = f1, "f'(x)", 1
+    # Velg målfunksjon basert på nivå
+    if nivå == "f(x)":
+        target, label, grad = f_orig, "f(x)", 0
+    elif nivå == "f'(x)":
+        target, label, grad = f1, "f'(x)", 1
     else:
-        target_f, label_prefix, f_grad = f2, "f''(x)", 2
+        target, label, grad = f2, "f''(x)", 2
 
-    target_f_faktorisert = sp.factor(target_f)
-    teller, nevner = sp.fraction(target_f_faktorisert)
+    # Faktorisering
+    target_fakt = sp.factor(target)
+    t, n = sp.fraction(target_fakt)
     
-    nullpunkter = sp.solve(teller, x)
-    bruddpunkter = sp.solve(nevner, x)
-    alle_kritiske = sorted(list(set([sp.re(p) for p in (nullpunkter + bruddpunkter) if p.is_real])), key=float)
+    # Nullpunkter og bruddpunkter
+    nullpunkter = sp.solve(t, x)
+    bruddpunkter = sp.solve(n, x)
+    kritiske = sorted(list(set([sp.re(p) for p in (nullpunkter + bruddpunkter) if p.is_real])), key=float)
 
-    # --- TEGNEFUNKSJON FOR SKJEMA ---
-    def tegn_skjema():
+    # --- TEGNEFUNKSJON ---
+    def tegn_skjema(target_f, kritiske_pkt, label_text, vis_fakt, vis_x, farge_tema, analyse_grad):
         margin = 2.0
-        x_min = float(alle_kritiske[0]) - margin if alle_kritiske else -5
-        x_max = float(alle_kritiske[-1]) + margin if alle_kritiske else 5
-        plot_pts = sorted(list(set([x_min, x_max] + [float(val) for val in alle_kritiske])))
+        x_min = float(kritiske_pkt[0]) - margin if kritiske_pkt else -5
+        x_max = float(kritiske_pkt[-1]) + margin if kritiske_pkt else 5
+        pts = sorted(list(set([x_min, x_max] + [float(v) for v in kritiske_pkt])))
         
-        t_fakt, n_fakt = sp.factor_list(teller)[1], sp.factor_list(nevner)[1]
-        konst = sp.factor_list(teller)[0] / sp.factor_list(nevner)[0]
-        faktorer_linjer = []
-        if abs(konst - 1) > 1e-9: faktorer_linjer.append(konst)
-        for fakt, eksp in t_fakt: faktorer_linjer.append(fakt**eksp)
-        for fakt, eksp in n_fakt: faktorer_linjer.append(fakt**eksp)
+        # Hent faktorer
+        t_del, n_del = sp.fraction(sp.factor(target_f))
+        t_list, n_list = sp.factor_list(t_del)[1], sp.factor_list(n_del)[1]
+        konst = sp.factor_list(t_del)[0] / sp.factor_list(n_del)[0]
         
-        rader = faktorer_linjer + [target_f]
-        fig, ax = plt.subplots(figsize=(12, len(rader) * 1.2))
+        linjer = []
+        if abs(konst - 1) > 1e-9: linjer.append(konst)
+        for fkt, ek in t_list: linjer.append(fkt**ek)
+        for fkt, ek in n_list: linjer.append(fkt**ek)
+        
+        alle_rader = linjer + [target_f]
+        fig, ax = plt.subplots(figsize=(12, len(alle_rader) * 1.2))
+        
+        # X-akse på topp
         ax.xaxis.set_ticks_position('top')
-        
-        for idx, uttrykk in enumerate(reversed(rader)):
-            y = idx
-            label = label_prefix if idx == 0 else f"${sp.latex(uttrykk)}$"
-            ax.text(x_min - 0.2, y, label, va='center', ha='right', fontsize=13)
+        ax.xaxis.set_label_position('top')
+
+        for idx, uttr in enumerate(reversed(alle_rader)):
+            y_pos = idx
+            # Etikett til venstre
+            if idx == 0:
+                rad_navn = label_text
+            else:
+                rad_navn = f"Faktor {len(alle_rader)-idx}" if not vis_fakt else f"${sp.latex(uttr)}$"
             
-            for i in range(len(plot_pts)-1):
-                mid = (plot_pts[i] + plot_pts[i+1]) / 2
-                try:
-                    verdi = uttrykk.subs(x, mid)
-                    pos = verdi > 0
-                except: pos = float(uttrykk) > 0
+            ax.text(x_min - 0.2, y_pos, rad_navn, va='center', ha='right', fontsize=13)
+            
+            # Tegn intervaller
+            for i in range(len(pts)-1):
+                m = (pts[i] + pts[i+1]) / 2
+                res = uttr.subs(x, m)
+                is_pos = res > 0
+                
+                ls = '-' if is_pos else '--'
+                c = 'black'
+                if farge_tema == "Blå/Rød": c = 'blue' if is_pos else 'red'
+                
+                ax.plot([pts[i], pts[i+1]], [y_pos, y_pos], linestyle=ls, color=c, lw=2.5)
 
-                ls, c = ('-', 'black') if pos else ('--', 'black')
-                if farge_tema == "Blå/Rød": c = 'blue' if pos else 'red'
-                ax.plot([plot_pts[i], plot_pts[i+1]], [y, y], linestyle=ls, color=c, lw=2.5)
+                # Illustrasjoner (Piler og krumning) kun på hovedlinjen
+                if idx == 0 and v_info:
+                    if analyse_grad == 1: # f'
+                        sym = r"$\nearrow$" if is_pos else r"$\searrow$"
+                        ax.text(m, y_pos - 0.35, sym, ha='center', fontsize=20, color='gray')
+                    elif analyse_grad == 2: # f''
+                        sym = r"$\cup$" if is_pos else r"$\cap$"
+                        ax.text(m, y_pos - 0.35, sym, ha='center', fontsize=20, color='gray')
 
-                # --- NYTT: Illustrasjon av stigning og krumning ---
-                if idx == 0 and not skjul_info:
-                    symbol = ""
-                    if f_grad == 1: # f'(x) -> Stigning
-                        symbol = r"$\nearrow$" if pos else r"$\searrow$"
-                    elif f_grad == 2: # f''(x) -> Krumning
-                        symbol = r"$\cup$" if pos else r"$\cap$"
-                    
-                    if symbol:
-                        ax.text(mid, y - 0.3, symbol, ha='center', fontsize=18, color='gray')
-
-            for p in alle_kritiske:
-                ax.axvline(float(p), color='gray', lw=0.6, linestyle=':', alpha=0.5)
+            # Markører (0 og X)
+            for p in kritiske_pkt:
+                p_v = float(p)
+                ax.axvline(p_v, color='gray', lw=0.6, linestyle=':', alpha=0.5)
                 if idx == 0:
-                    sym = 'X' if any(sp.simplify(p-b)==0 for b in bruddpunkter) else '0'
-                    ax.text(float(p), y, sym, ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none'))
+                    er_b = any(sp.simplify(p-b)==0 for b in bruddpunkter)
+                    ax.text(p_v, y_pos, 'X' if er_b else '0', ha='center', va='center', 
+                            bbox=dict(facecolor='white', edgecolor='none', pad=2))
 
+        # --- MELLOMROM: Justerer ylim for å gi plass mellom x-akse og øverste faktor ---
         ax.set_xlim(x_min - 0.5, x_max + 0.5)
-        ax.set_ylim(-0.7, len(rader) + 0.3) # Mer plass til x-akse og symboler
-        if not skjul_x:
-            ax.set_xticks([float(v) for v in alle_kritiske])
-            ax.set_xticklabels([f"${sp.latex(v)}$" for v in alle_kritiske], fontsize=12)
-        else: ax.set_xticks([])
-        
+        ax.set_ylim(-0.8, len(alle_rader) + 0.4) 
+
+        if vis_x:
+            ax.set_xticks([float(v) for v in kritiske_pkt])
+            ax.set_xticklabels([f"${sp.latex(v)}$" for v in kritiske_pkt], fontsize=12)
+        else:
+            ax.set_xticks([])
+
         ax.spines['top'].set_visible(True)
         ax.spines[['bottom', 'left', 'right']].set_visible(False)
         ax.get_yaxis().set_visible(False)
         plt.tight_layout()
         return fig
 
-    # --- VISNING ---
-    if not skjul_info:
-        st.latex(f"{label_prefix} = {sp.latex(target_f_faktorisert)}")
+    # --- VISNING I APP ---
+    if v_info:
+        st.latex(f"{label} = {sp.latex(target_fakt)}")
     
-    st.pyplot(tegn_skjema())
+    skjema_fig = tegn_skjema(target, kritiske, label, v_faktorer, v_x_akse, farge_valg, grad)
+    st.pyplot(skjema_fig)
 
-    # --- NYTT: GRAFTEGNING ---
-    if vis_graf:
-        st.subheader("Grafisk fremstilling av f(x)")
-        margin = 3.0
-        x_min_f = float(alle_kritiske[0]) - margin if alle_kritiske else -5
-        x_max_f = float(alle_kritiske[-1]) + margin if alle_kritiske else 5
-        
-        # Lag numpy-funksjon for rask plotting
-        f_func = sp.lambdify(x, f_orig, "numpy")
-        x_vals = np.linspace(x_min_f, x_max_f, 400)
-        try:
-            y_vals = f_func(x_vals)
-            
-            fig_graf, ax_graf = plt.subplots(figsize=(10, 4))
-            ax_graf.plot(x_vals, y_vals, color='black', lw=2, label="f(x)")
-            ax_graf.axhline(0, color='gray', lw=1)
-            ax_graf.axvline(0, color='gray', lw=1)
-            ax_graf.grid(True, alpha=0.3)
-            
-            # Marker nullpunkter og ekstremalpunkter på grafen
-            for p in alle_kritiske:
-                p_val = float(p)
-                try:
-                    y_p = float(f_orig.subs(x, p_val))
-                    ax_graf.plot(p_val, y_p, 'ro') # Rød prikk
-                except: pass
-            
-            st.pyplot(fig_graf)
-        except:
-            st.info("Grafen kunne ikke tegnes (kanskje pga. bruddpunkter eller komplekse tall).")
-
-    # --- ANALYSE-MODUL ---
-    if not skjul_info:
+    # --- GRAF ---
+    if v_graf:
         st.divider()
-        st.subheader("📝 Tolkning")
-        if f_grad == 1:
-            st.write("**Stigning ($\nearrow$):** Grafen går oppover når $f'(x)$ er positiv (hel linje).")
-            st.write("**Synking ($\searrow$):** Grafen går nedover når $f'(x)$ er negativ (stiplet linje).")
-        elif f_grad == 2:
-            st.write("**Krumning opp ($\cup$):** Grafen er 'smilende' når $f''(x)$ er positiv.")
-            st.write("**Krumning ned ($\cap$):** Grafen er 'sur' når $f''(x)$ er negativ.")
+        st.subheader("Grafen til f(x)")
+        m_g = 4.0
+        x_g = np.linspace(float(min(kritiske))-m_g if kritiske else -7, float(max(kritiske))+m_g if kritiske else 7, 500)
+        f_n = sp.lambdify(x, f_orig, "numpy")
+        try:
+            y_g = f_n(x_g)
+            fig_g, ax_g = plt.subplots(figsize=(10, 4))
+            ax_g.plot(x_g, y_g, 'k', lw=2)
+            ax_g.axhline(0, color='gray', lw=1)
+            ax_g.axvline(0, color='gray', lw=1)
+            ax_g.grid(True, alpha=0.2)
+            st.pyplot(fig_g)
+        except: st.warning("Kunne ikke tegne grafen.")
+
+    # --- TOLKNING ---
+    if v_info:
+        st.divider()
+        st.subheader("📝 Analyse")
+        if grad == 1:
+            st.write("**Stigningsegenskaper:**")
+            for p in [pt for pt in nullpunkter if pt.is_real]:
+                v1, v2 = f1.subs(x, p-0.01), f1.subs(x, p+0.01)
+                y_v = f_orig.subs(x, p)
+                if v1 > 0 and v2 < 0: st.success(f"Toppunkt i $({sp.latex(p)}, {sp.latex(y_v)})$")
+                elif v1 < 0 and v2 > 0: st.success(f"Bunnpunkt i $({sp.latex(p)}, {sp.latex(y_v)})$")
+        elif grad == 2:
+            st.write("**Krumning:**")
+            st.write("- $\cup$ betyr hulsiden opp (konveks)")
+            st.write("- $\cap$ betyr hulsiden ned (konkav)")
 
     # Nedlasting
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-    st.sidebar.download_button("📥 Last ned bilde", buf.getvalue(), "fortegn.png")
+    skjema_fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
+    st.sidebar.download_button("📥 Last ned PNG", buf.getvalue(), "fortegnsskjema.png", "image/png")
 
 except Exception as e:
-    st.error(f"Feil: {e}")
+    st.error(f"Feil i inntasting: {e}. Husk å bruke `**` for potens og `*` for gange.")
