@@ -6,34 +6,22 @@ import io
 
 # Sideoppsett
 st.set_page_config(page_title="Matte-Analyse: Drøfting", layout="wide")
-st.title("📈 Funksjonsdrøfting med Automatisk Tolkning")
+st.title("📈 Funksjonsdrøfting med krumning og stigning")
 
 # --- SIDEBAR: KONTROLLPANEL ---
 with st.sidebar:
     st.header("1. Definer funksjon")
     input_f = st.text_input("Skriv inn f(x):", "x**3 - 3*x**2 + 2")
     
-    # --- NY: HJELP TIL INNTASTING ---
     with st.expander("ℹ️ Hvordan skrive inn matte?"):
-        st.markdown("""
-        - **Potens:** `x**2` (ikke `x^2`)
-        - **Gange:** `2*x` (husk stjerne)
-        - **Brøk:** `(x+1)/(x-1)`
-        - **Kvadratrot:** `sqrt(x)`
-        - **Eulers tall (e):** `exp(x)`
-        - **Pi:** `pi`
-        """)
+        st.markdown("- **Potens:** `x**2`\n- **Gange:** `2*x`\n- **Brøk:** `(x+1)/(x-1)`\n- **Kvadratrot:** `sqrt(x)`")
 
     st.header("2. Velg Analyse-nivå")
-    analyse_nivå = st.radio(
-        "Hva skal analyseres?",
-        ["Originalfunksjon f(x)", "Førstederivert f'(x)", "Andrederivert f''(x)"]
-    )
+    analyse_nivå = st.radio("Hva skal analyseres?", ["Originalfunksjon f(x)", "Førstederivert f'(x)", "Andrederivert f''(x)"])
     
     st.header("3. Lærer-modus")
     skjul_info = st.checkbox("Skjul matematisk uttrykk og fasit", value=False)
-    skjul_faktorer = st.checkbox("Skjul faktornavn", value=False)
-    skjul_x = st.checkbox("Skjul x-verdier", value=False)
+    vis_graf = st.checkbox("Vis selve grafen til f(x)", value=True)
     
     st.header("4. Design")
     farge_tema = st.selectbox("Farger", ["Svart", "Blå/Rød"])
@@ -41,7 +29,6 @@ with st.sidebar:
 # --- MATEMATISK LOGIKK ---
 try:
     x = sp.symbols('x')
-    # Bruker locals={'sqrt': sp.sqrt, 'exp': sp.exp, 'pi': sp.pi} for sikkerhets skyld
     f_orig = sp.sympify(input_f)
     f1 = sp.diff(f_orig, x)
     f2 = sp.diff(f1, x)
@@ -60,7 +47,7 @@ try:
     bruddpunkter = sp.solve(nevner, x)
     alle_kritiske = sorted(list(set([sp.re(p) for p in (nullpunkter + bruddpunkter) if p.is_real])), key=float)
 
-    # --- TEGNEFUNKSJON ---
+    # --- TEGNEFUNKSJON FOR SKJEMA ---
     def tegn_skjema():
         margin = 2.0
         x_min = float(alle_kritiske[0]) - margin if alle_kritiske else -5
@@ -75,39 +62,44 @@ try:
         for fakt, eksp in n_fakt: faktorer_linjer.append(fakt**eksp)
         
         rader = faktorer_linjer + [target_f]
-        # Øker figurhøyden litt for mer luft
-        fig, ax = plt.subplots(figsize=(12, len(rader) * 1.1))
+        fig, ax = plt.subplots(figsize=(12, len(rader) * 1.2))
         ax.xaxis.set_ticks_position('top')
         
         for idx, uttrykk in enumerate(reversed(rader)):
             y = idx
-            label = label_prefix if idx == 0 else (f"Faktor {len(rader)-idx}" if skjul_faktorer else f"${sp.latex(uttrykk)}$")
+            label = label_prefix if idx == 0 else f"${sp.latex(uttrykk)}$"
             ax.text(x_min - 0.2, y, label, va='center', ha='right', fontsize=13)
             
             for i in range(len(plot_pts)-1):
                 mid = (plot_pts[i] + plot_pts[i+1]) / 2
-                verdi = uttrykk.subs(x, mid)
-                pos = verdi > 0
+                try:
+                    verdi = uttrykk.subs(x, mid)
+                    pos = verdi > 0
+                except: pos = float(uttrykk) > 0
+
                 ls, c = ('-', 'black') if pos else ('--', 'black')
                 if farge_tema == "Blå/Rød": c = 'blue' if pos else 'red'
                 ax.plot([plot_pts[i], plot_pts[i+1]], [y, y], linestyle=ls, color=c, lw=2.5)
+
+                # --- NYTT: Illustrasjon av stigning og krumning ---
+                if idx == 0 and not skjul_info:
+                    symbol = ""
+                    if f_grad == 1: # f'(x) -> Stigning
+                        symbol = r"$\nearrow$" if pos else r"$\searrow$"
+                    elif f_grad == 2: # f''(x) -> Krumning
+                        symbol = r"$\cup$" if pos else r"$\cap$"
+                    
+                    if symbol:
+                        ax.text(mid, y - 0.3, symbol, ha='center', fontsize=18, color='gray')
 
             for p in alle_kritiske:
                 ax.axvline(float(p), color='gray', lw=0.6, linestyle=':', alpha=0.5)
                 if idx == 0:
                     sym = 'X' if any(sp.simplify(p-b)==0 for b in bruddpunkter) else '0'
                     ax.text(float(p), y, sym, ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none'))
-                else:
-                    try: 
-                        if abs(uttrykk.subs(x, p)) < 1e-9: 
-                            ax.text(float(p), y, '0', ha='center', va='center', bbox=dict(facecolor='white', edgecolor='none'))
-                    except: pass
 
         ax.set_xlim(x_min - 0.5, x_max + 0.5)
-        # --- JUSTERING: Mer luft mellom x-akse (topp) og første linje ---
-        # Vi setter ylim til å gå litt høyere enn den øverste raden (som er len(rader)-1)
-        ax.set_ylim(-0.5, len(rader) + 0.2)
-        
+        ax.set_ylim(-0.7, len(rader) + 0.3) # Mer plass til x-akse og symboler
         if not skjul_x:
             ax.set_xticks([float(v) for v in alle_kritiske])
             ax.set_xticklabels([f"${sp.latex(v)}$" for v in alle_kritiske], fontsize=12)
@@ -125,39 +117,52 @@ try:
     
     st.pyplot(tegn_skjema())
 
+    # --- NYTT: GRAFTEGNING ---
+    if vis_graf:
+        st.subheader("Grafisk fremstilling av f(x)")
+        margin = 3.0
+        x_min_f = float(alle_kritiske[0]) - margin if alle_kritiske else -5
+        x_max_f = float(alle_kritiske[-1]) + margin if alle_kritiske else 5
+        
+        # Lag numpy-funksjon for rask plotting
+        f_func = sp.lambdify(x, f_orig, "numpy")
+        x_vals = np.linspace(x_min_f, x_max_f, 400)
+        try:
+            y_vals = f_func(x_vals)
+            
+            fig_graf, ax_graf = plt.subplots(figsize=(10, 4))
+            ax_graf.plot(x_vals, y_vals, color='black', lw=2, label="f(x)")
+            ax_graf.axhline(0, color='gray', lw=1)
+            ax_graf.axvline(0, color='gray', lw=1)
+            ax_graf.grid(True, alpha=0.3)
+            
+            # Marker nullpunkter og ekstremalpunkter på grafen
+            for p in alle_kritiske:
+                p_val = float(p)
+                try:
+                    y_p = float(f_orig.subs(x, p_val))
+                    ax_graf.plot(p_val, y_p, 'ro') # Rød prikk
+                except: pass
+            
+            st.pyplot(fig_graf)
+        except:
+            st.info("Grafen kunne ikke tegnes (kanskje pga. bruddpunkter eller komplekse tall).")
+
     # --- ANALYSE-MODUL ---
     if not skjul_info:
         st.divider()
-        st.subheader("📝 Automatisk Analyse & Tolkning")
-        
-        if bruddpunkter:
-            st.warning(f"**Bruddpunkter:** Funksjonen er ikke definert for $x = {sp.latex(bruddpunkter)}$.")
-
-        if f_grad == 0:
-            st.write(f"**Nullpunkter:** $x = {sp.latex(nullpunkter)}$")
-        elif f_grad == 1:
-            st.write("**Monotoniegenskaper:**")
-            for p in nullpunkter:
-                if p.is_real:
-                    v_for, v_etter = f1.subs(x, p - 0.01), f1.subs(x, p + 0.01)
-                    y_val = f_orig.subs(x, p)
-                    if v_for > 0 and v_etter < 0:
-                        st.success(f"Toppunkt i $({sp.latex(p)}, {sp.latex(y_val)})$")
-                    elif v_for < 0 and v_etter > 0:
-                        st.success(f"Bunnpunkt i $({sp.latex(p)}, {sp.latex(y_val)})$")
-                    elif (v_for * v_etter) > 0:
-                        st.info(f"Terassepunkt i $({sp.latex(p)}, {sp.latex(y_val)})$")
+        st.subheader("📝 Tolkning")
+        if f_grad == 1:
+            st.write("**Stigning ($\nearrow$):** Grafen går oppover når $f'(x)$ er positiv (hel linje).")
+            st.write("**Synking ($\searrow$):** Grafen går nedover når $f'(x)$ er negativ (stiplet linje).")
         elif f_grad == 2:
-            st.write("**Krumning:**")
-            for p in nullpunkter:
-                if p.is_real:
-                    if (f2.subs(x, p-0.01)*f2.subs(x, p+0.01)) < 0:
-                        st.success(f"Vendepunkt i $x = {sp.latex(p)}$")
+            st.write("**Krumning opp ($\cup$):** Grafen er 'smilende' når $f''(x)$ er positiv.")
+            st.write("**Krumning ned ($\cap$):** Grafen er 'sur' når $f''(x)$ er negativ.")
 
     # Nedlasting
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-    st.sidebar.download_button("📥 Last ned bilde", buf.getvalue(), "fortegnsskjema.png")
+    st.sidebar.download_button("📥 Last ned bilde", buf.getvalue(), "fortegn.png")
 
 except Exception as e:
-    st.error(f"Feil: Kontroller inntastingen. Bruk `**` for potens og `*` for gange. ({e})")
+    st.error(f"Feil: {e}")
