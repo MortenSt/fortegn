@@ -11,7 +11,7 @@ st.title("📊 Komplett Funksjonsanalyse & Fortegnsskjema")
 # --- SIDEBAR: KONTROLLPANEL ---
 with st.sidebar:
     st.header("1. Definer funksjon")
-    input_f = st.text_input("Skriv inn f(x):", "(x**2 - 2) / (x - 1)")
+    input_f = st.text_input("Skriv inn f(x):", "(x - 3) / (x + 1)")
     
     with st.expander("ℹ️ Inntastingsguide"):
         st.markdown("""
@@ -39,50 +39,43 @@ with st.sidebar:
 try:
     x = sp.symbols('x')
     f_orig = sp.sympify(input_f)
-    f1 = sp.diff(f_orig, x)
-    f2 = sp.diff(f1, x)
     
-    # Velg uttrykk basert på nivå
+    # Forenkler de deriverte
+    f1 = sp.simplify(sp.diff(f_orig, x))
+    f2 = sp.simplify(sp.diff(f1, x))
+    
     if nivå == "f(x)": target, label, grad = f_orig, "f(x)", 0
     elif nivå == "f'(x)": target, label, grad = f1, "f'(x)", 1
     else: target, label, grad = f2, "f''(x)", 2
 
-    # VIKTIG FIX: Splitte teller og nevner før factor_list
-    target_simplify = sp.simplify(target)
-    teller, nevner = sp.fraction(sp.factor(target_simplify))
+    # Rydd opp i uttrykket
+    target_clean = sp.cancel(target)
+    teller, nevner = sp.fraction(target_clean)
     
-    # Finn ALLE reelle røtter
+    # Finn ALLE reelle røtter for x-aksen
     nullpunkter = sorted([p for p in sp.solve(teller, x) if p.is_real], key=float)
     bruddpunkter = sorted([p for p in sp.solve(nevner, x) if p.is_real], key=float)
     kritiske = sorted(list(set(nullpunkter + bruddpunkter)), key=float)
 
-    # Bygg opp faktorer for skjemaet
+    # Bygg opp faktorer
     rader = []
+    t_data = sp.factor_list(teller)
+    n_data = sp.factor_list(nevner)
     
-    # Hent konstanter fra teller og nevner
-    t_list = sp.factor_list(teller)
-    n_list = sp.factor_list(nevner)
-    konstant = t_list[0] / n_list[0]
-    
+    # 1. Konstantledd
+    konstant = t_data[0] / n_data[0]
     if abs(konstant - 1) > 1e-9:
         rader.append(('k', konstant))
     
-    # Variabelledd fra røtter
-    for p in sorted(list(set(nullpunkter)), key=float):
-        mult = nullpunkter.count(p)
-        rader.append(('v', (x - p)**mult))
-        
-    for p in sorted(list(set(bruddpunkter)), key=float):
-        mult = bruddpunkter.count(p)
-        # Vi viser faktoren i nevner som (x-p), men den påvirker fortegnet likt
-        rader.append(('v', (x - p)**mult))
-        
-    # Sjekk for irredusible polynomer (f.eks x**2 + 1)
-    for fkt, eksp in t_list[1] + n_list[1]:
-        if not any(sp.solve(fkt, x, domain=sp.S.Reals)):
-            rader.append(('v', fkt**eksp))
+    # 2. Variabelledd - HER SPLITTER VI OPP POTENSER
+    # Vi går gjennom faktorene i teller og nevner
+    for fkt, eksp in t_data[1] + n_data[1]:
+        # Hvis eksponenten er f.eks. 2, legger vi til faktoren 2 ganger
+        for _ in range(eksp):
+            rader.append(('v', fkt))
 
-    rader.append(('t', target))
+    # 3. Totalen nederst
+    rader.append(('t', target_clean))
 
     # --- TEGNEFUNKSJON SKJEMA ---
     def tegn_skjema():
@@ -91,17 +84,20 @@ try:
         x_max = float(kritiske[-1]) + margin if kritiske else 5
         pts = sorted(list(set([x_min, x_max] + [float(v) for v in kritiske])))
         
-        fig, ax = plt.subplots(figsize=(12, len(rader) * 1.1))
+        # Beregn antall linjer for å sette høyde
+        fig, ax = plt.subplots(figsize=(12, len(rader) * 1.0))
         ax.xaxis.set_ticks_position('top')
 
         for idx, (type, uttr) in enumerate(reversed(rader)):
             y = idx
+            # Navngiving
             if type == 't': n = label
             elif type == 'k': n = f"${sp.latex(uttr)}$" if vis_konst else "Konstant"
             else: n = f"Faktor {len(rader)-idx}" if skjul_var else f"${sp.latex(uttr)}$"
             
             ax.text(x_min - 0.2, y, n, va='center', ha='right', fontsize=13)
             
+            # Tegn linjer
             for i in range(len(pts)-1):
                 m = (pts[i] + pts[i+1]) / 2
                 res = uttr.subs(x, m) if hasattr(uttr, 'subs') else uttr
@@ -110,10 +106,12 @@ try:
                 if farge_valg == "Blå/Rød": c = 'blue' if pos else 'red'
                 ax.plot([pts[i], pts[i+1]], [y, y], '-' if pos else '--', color=c, lw=2.5)
 
+                # Piler og krumning på bunnlinjen
                 if type == 't' and v_fasit:
                     if grad == 1: ax.text(m, y-0.35, r"$\nearrow$" if pos else r"$\searrow$", ha='center', fontsize=20, color='gray')
                     elif grad == 2: ax.text(m, y-0.35, r"$\cup$" if pos else r"$\cap$", ha='center', fontsize=20, color='gray')
 
+            # Vertikale linjer og 0/X
             for p in kritiske:
                 p_v = float(p)
                 ax.axvline(p_v, color='gray', lw=0.6, linestyle=':', alpha=0.5)
@@ -142,7 +140,7 @@ try:
 
     # --- VISNING ---
     if v_fasit:
-        st.latex(f"{label} = {sp.latex(target)}")
+        st.latex(f"{label} = {sp.latex(target_clean)}")
     
     st.pyplot(tegn_skjema())
 
@@ -167,7 +165,6 @@ try:
         for i in range(len(intervaller)-1):
             xs = np.linspace(intervaller[i]+0.05, intervaller[i+1]-0.05, 300)
             ys = f_num(xs)
-            # Masker ekstreme verdier for å unngå streker
             ys[np.abs(ys) > 100] = np.nan
             ax_g.plot(xs, ys, 'k', lw=2)
         
